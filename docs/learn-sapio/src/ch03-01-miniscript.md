@@ -30,7 +30,7 @@ From the [miniscript website](http://bitcoin.sipa.be/miniscript/):
 
 For Sapio, we use a customized
 [rust-miniscript](https://github.com/sapio-lang/rust-miniscript) which extends
-miniscript with functionality relevent to CheckTemplateVerify and Sapio. All
+miniscript with functionality relevant to CheckTemplateVerify and Sapio. All
 changes should be able to be upstreamed... eventually.
 
 The Policy type (named Clause in Sapio) allows us to specify the predicates upon
@@ -43,7 +43,7 @@ understand how to satisfy miniscripts.
 A limitation of this approach is that there are certain types of script which
 are possible, but not yet supported in Sapio. For example, the `OP_SIZE` coin
 flip script is not currently possible with Miniscript. Another limitation of
-Miniscript is that keys may not be repreated to preserve a guarantee of non
+Miniscript is that keys may not be repeated to preserve a guarantee of non
 malleability.
 
 Miniscript & Policy are an ongoing research concern. As they develop, Sapio will
