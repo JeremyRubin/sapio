@@ -14,11 +14,13 @@ use sapio_base::nums::NumsInternalKey;
 use sapio_base::policy::ScriptPolicy;
 use sapio_base::program::EmulatedProgram;
 
+pub mod journal;
 pub mod lineage;
 pub mod script;
 pub mod tree;
 pub mod witness;
 
+pub use journal::{LineageJournal, LockedLineage, SigningReservation};
 pub use lineage::LineageGuard;
 pub use script::{Config, Transition};
 pub use tree::{Leaf, Node, Proof, Tree};
