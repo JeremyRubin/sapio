@@ -90,9 +90,7 @@ impl LineageGuard {
 
         for (position, next) in successor.leaves() {
             let id = identity(next);
-            let unchanged_identity = current
-                .leaf(position)
-                .filter(|prior| identity(prior) == id);
+            let unchanged_identity = current.leaf(position).filter(|prior| identity(prior) == id);
             if let Some(prior) = unchanged_identity {
                 if next.seq < prior.seq {
                     return Err("LayerTree voucher sequence regressed");
@@ -131,8 +129,8 @@ impl LineageGuard {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::tree::{NUMS, SEQ_FINAL};
+    use super::*;
     use bitcoin::secp256k1::XOnlyPublicKey;
 
     fn member(nonce: u32, seq: u32, amount: u64) -> Leaf {
@@ -174,8 +172,10 @@ mod tests {
             Err("historical LayerTree owner/nonce identity reused")
         );
         assert_eq!(restored, snapshot);
-        assert_eq!(guard.check([8; 32], &exited, &replay),
-            Err("wrong LayerTree lineage identifier"));
+        assert_eq!(
+            guard.check([8; 32], &exited, &replay),
+            Err("wrong LayerTree lineage identifier")
+        );
     }
 
     #[test]
@@ -212,8 +212,10 @@ mod tests {
 
         let mut regressed = next.clone();
         regressed.set(0, Some(member(9, 0, 30_000))).unwrap();
-        assert_eq!(guard.check([7; 32], &next, &regressed),
-            Err("LayerTree voucher sequence regressed"));
+        assert_eq!(
+            guard.check([7; 32], &next, &regressed),
+            Err("LayerTree voucher sequence regressed")
+        );
 
         let mut finalized = next.clone();
         let mut leaf = next.leaf(0).unwrap().clone();
@@ -242,18 +244,24 @@ mod tests {
         let mut moved = initial.clone();
         moved.set(0, None).unwrap();
         moved.set(1, initial.leaf(0).cloned()).unwrap();
-        assert_eq!(guard.check([7; 32], &initial, &moved),
-            Err("historical LayerTree owner/nonce identity reused"));
+        assert_eq!(
+            guard.check([7; 32], &initial, &moved),
+            Err("historical LayerTree owner/nonce identity reused")
+        );
 
         let mut advanced = initial.clone();
         advanced.set(1, Some(member(10, 0, 10_000))).unwrap();
         guard.advance([7; 32], &initial, &advanced).unwrap();
-        assert_eq!(guard.check([7; 32], &initial, &advanced),
-            Err("stale or unrelated LayerTree predecessor"));
+        assert_eq!(
+            guard.check([7; 32], &initial, &advanced),
+            Err("stale or unrelated LayerTree predecessor")
+        );
         let mut wrong_depth = Tree::new(3).unwrap();
         wrong_depth.set(0, Some(member(11, 0, 10_000))).unwrap();
-        assert_eq!(guard.check([7; 32], &advanced, &wrong_depth),
-            Err("LayerTree lineage depth changed"));
+        assert_eq!(
+            guard.check([7; 32], &advanced, &wrong_depth),
+            Err("LayerTree lineage depth changed")
+        );
     }
 
     #[test]
