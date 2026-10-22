@@ -53,14 +53,17 @@ impl LineageGuard {
         }
     }
 
+    /// Return the immutable identifier of this tree lineage.
     pub fn tree_id(&self) -> [u8; 32] {
         self.tree_id
     }
 
+    /// Return the committed root of the latest acknowledged state.
     pub fn root(&self) -> Node {
         self.root
     }
 
+    /// Count every historically occupied owner/nonce pair, including exits.
     pub fn historical_identities(&self) -> usize {
         self.ever_seen.len()
     }
