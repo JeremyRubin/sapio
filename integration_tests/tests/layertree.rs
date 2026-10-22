@@ -540,7 +540,7 @@ fn historical_owner_nonce_reuse_revives_a_signed_voucher_in_the_real_mid_guest()
             )
         },
     );
-    assert!(refusal.unwrap_err().to_string().contains("historical LayerTree"));
+    assert!(refusal.err().expect("guarded preparation must fail").to_string().contains("historical LayerTree"));
 }
 
 #[test]
