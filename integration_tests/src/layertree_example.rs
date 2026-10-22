@@ -16,7 +16,7 @@ use sapio::contract::{Compiled, Context};
 use sapio_base::effects::MapEffectDB;
 use sapio_base::secp::secp;
 use sapio_contrib::contracts::layertree::{
-    script_tree_root, tree, witness, Config, LayerTree, Leaf, Transition, Tree,
+    script_tree_root, tree, witness, Config, LayerTree, Leaf, LineageGuard, Transition, Tree,
 };
 use std::sync::Arc;
 
@@ -170,6 +170,36 @@ pub fn prepare_step(
         lock_time,
         sponsor_tag,
         None,
+        None,
+        plan,
+    )
+}
+
+/// Prepare with historical identity and voucher-body checks BEFORE producing
+/// any authorization signatures. The caller must keep the guard serialized
+/// under a lock with its wallet state, then advance it at the commitment point.
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_step_guarded(
+    contract: &LayerTree,
+    current: &Tree,
+    principal: Coin,
+    transition: Transition,
+    payouts: Vec<TxOut>,
+    lock_time: u32,
+    sponsor_tag: u8,
+    guard: &LineageGuard,
+    plan: impl Fn(&dyn Fn(&Keypair) -> Vec<u8>, [u8; 32]) -> Result<witness::Prepared, &'static str>,
+) -> Result<Step, Error> {
+    prepare_step_funded(
+        contract,
+        current,
+        principal,
+        transition,
+        payouts,
+        lock_time,
+        sponsor_tag,
+        None,
+        Some(guard),
         plan,
     )
 }
@@ -184,6 +214,7 @@ fn prepare_step_funded(
     lock_time: u32,
     sponsor_tag: u8,
     sponsor_outpoint: Option<OutPoint>,
+    guard: Option<&LineageGuard>,
     plan: impl Fn(&dyn Fn(&Keypair) -> Vec<u8>, [u8; 32]) -> Result<witness::Prepared, &'static str>,
 ) -> Result<Step, Error> {
     let compiled = compile(contract, current)?;
@@ -197,6 +228,9 @@ fn prepare_step_funded(
     }
     let merkle = script_tree_root(&compiled)?;
     let (next, _) = plan(&|_| vec![], merkle)?;
+    if let Some(guard) = guard {
+        guard.check(contract.config().tree_id, current, &next)?;
+    }
     let successor = if next.root().sum == 0 {
         if next.root() != tree::Node::empty(next.depth()) {
             return Err("terminal state is not the empty tree".into());
@@ -432,6 +466,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         0,
         10,
         sponsor_point(0),
+        None,
         |sign, m| {
             witness::join(
                 &current,
@@ -462,6 +497,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         0,
         11,
         sponsor_point(1),
+        None,
         |sign, m| witness::join(&current, 2, 2, &cohort, &sign(&operator()), m),
     )?;
     advance(
@@ -486,6 +522,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         0,
         20,
         sponsor_point(2),
+        None,
         |sign, m| {
             witness::rewrite(
                 &current,
@@ -519,6 +556,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         0,
         12,
         sponsor_point(3),
+        None,
         |sign, m| {
             witness::update(
                 &current,
@@ -548,6 +586,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         0,
         13,
         sponsor_point(4),
+        None,
         |sign, m| {
             witness::carve(
                 &current,
@@ -589,6 +628,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         0,
         14,
         sponsor_point(5),
+        None,
         |_, m| {
             witness::carve(
                 &current,
@@ -632,6 +672,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         0,
         15,
         sponsor_point(6),
+        None,
         |_, m| {
             witness::carve(
                 &current,
@@ -665,6 +706,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         0,
         16,
         sponsor_point(7),
+        None,
         |sign, m| witness::exit(&current, &[(2, false, sign(&key(212)))], m),
     )?;
     advance(
@@ -688,6 +730,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         0,
         17,
         sponsor_point(8),
+        None,
         |sign, m| {
             witness::exit(
                 &current,
@@ -717,6 +760,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         LEASE,
         18,
         sponsor_point(9),
+        None,
         |sign, m| witness::evict_subtree(&current, 2, 2, &sign(&operator()), m),
     )?;
     advance(
@@ -737,6 +781,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         LEASE,
         19,
         sponsor_point(10),
+        None,
         |sign, m| witness::evict_subtree(&current, 1, 2, &sign(&operator()), m),
     )?;
     advance(
