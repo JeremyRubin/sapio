@@ -470,7 +470,6 @@ mod tests {
         let tx = transaction(&journal, &after);
         {
             let mut on_disk = LockedLineage::create(&path, journal).unwrap();
-            assert!(LockedLineage::create(&path, on_disk.state().clone()).is_err());
             let txid = on_disk.reserve(&tree, &after, &prevout, &tx).unwrap();
             assert_eq!(on_disk.permit(&tx).unwrap(), txid);
         }
@@ -489,6 +488,7 @@ mod tests {
             assert!(recovered.state().pending().is_none());
             assert_eq!(recovered.state().guard().historical_identities(), 2);
         }
+        assert!(LockedLineage::create(&path, setup().0).is_err());
         fs::remove_file(&path).unwrap();
         fs::remove_file(lock_path(&path)).unwrap();
     }
