@@ -77,6 +77,15 @@ It accepts input zero plus at least one native witness-v0 funding input,
 excludes annexes and independent Taproot covenant inputs, and retains the
 10,000-byte Script, 520-byte element and 1,000-element stack bounds.
 
+## Historical replay and wallet admission
+
+A removed `(owner_key, nonce)` can return in a later state with its earlier
+voucher generation and revive a previously signed voucher. The companion
+[adversarial tests and historical lineage guard](LAYERTREE_LINEAGE_GUARD.md)
+exercise this through the real MID emulator and show an opt-in wallet-side
+tombstone policy. Persisting the guard is the wallet's responsibility; the
+covenant still validates only the current commitment.
+
 ## Funding, vouchers and trust
 
 The example separately funds admissions and miner fees. Its runner reserves
