@@ -426,6 +426,99 @@ fn vouchers_cannot_replay_after_sequence_advance_and_hashlocks_bind_exact_preima
 }
 
 #[test]
+fn historical_owner_nonce_reuse_revives_a_signed_voucher_in_the_real_mid_guest() {
+    use sapio_contrib::contracts::layertree::LineageGuard;
+
+    let contract = example::contract().unwrap();
+    let initial = example::initial_tree().unwrap();
+    let owner = initial.leaf(0).unwrap().clone();
+    let claim = example::member(214, 10_000);
+    // Sign once, in the initial state. A voucher binds lineage and leaf
+    // body (including owner, nonce and seq), but not the current outpoint.
+    let stale_voucher = example::sign_voucher(
+        owner.voucher_message(contract.config().tree_id, &claim),
+        &example::key(210),
+    );
+
+    // Both UPDATEs below have fresh owner and operator signatures.
+    // The first retires owner/nonce 210, the second reintroduces exactly
+    // that 116-byte record, restoring its voucher message.
+    let mut replacement = owner.clone();
+    replacement.owner_key = example::key(220).x_only_public_key().0;
+    replacement.nonce = 220;
+    let away = example::prepare_step(
+        &contract,
+        &initial,
+        principal(&contract, &initial, 80),
+        Transition::Update,
+        vec![],
+        0,
+        81,
+        |sign, m| {
+            witness::update(
+                &initial,
+                0,
+                replacement.clone(),
+                &sign(&example::key(210)),
+                &sign(&example::operator()),
+                m,
+            )
+        },
+    )
+    .unwrap();
+    let away_tx = example::finish(&away, &example::oracle().unwrap()).unwrap();
+
+    let restored = example::prepare_step(
+        &contract,
+        &away.next,
+        successor(&away_tx),
+        Transition::Update,
+        vec![],
+        0,
+        82,
+        |sign, m| {
+            witness::update(
+                &away.next,
+                0,
+                owner.clone(),
+                &sign(&example::key(220)),
+                &sign(&example::operator()),
+                m,
+            )
+        },
+    )
+    .unwrap();
+    let restored_tx = example::finish(&restored, &example::oracle().unwrap()).unwrap();
+    assert_eq!(restored.next.root(), initial.root());
+
+    // The old voucher is now accepted by the genuine compiled MID WASM
+    // evaluator against a newly signed Bitcoin transaction.
+    let replay = claim_step(
+        &contract,
+        &restored.next,
+        successor(&restored_tx),
+        &claim,
+        &stale_voucher,
+        None,
+        83,
+    );
+    let claimed = example::finish(&replay, &example::oracle().unwrap()).unwrap();
+    assert_eq!(claimed.output[0].value.to_sat(), initial.root().sum);
+    assert_eq!(replay.next.leaf(4), Some(&claim));
+
+    // An application that persisted its identity history would have refused
+    // to issue the second UPDATE's signatures before the replayable state.
+    let mut guard = LineageGuard::bootstrap(contract.config().tree_id, &initial);
+    guard
+        .advance(contract.config().tree_id, &initial, &away.next)
+        .unwrap();
+    assert_eq!(
+        guard.check(contract.config().tree_id, &away.next, &restored.next),
+        Err("historical LayerTree owner/nonce identity reused")
+    );
+}
+
+#[test]
 fn final_member_exit_closes_the_pool_and_depth_sixteen_remains_executable() {
     for depth in [1, 16] {
         let contract = LayerTree::new(
