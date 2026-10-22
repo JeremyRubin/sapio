@@ -544,6 +544,58 @@ fn historical_owner_nonce_reuse_revives_a_signed_voucher_in_the_real_mid_guest()
 }
 
 #[test]
+fn two_members_exit_sequentially_without_either_coparticipants_signature() {
+    let contract = LayerTree::new(
+        Config {
+            depth: 2,
+            ..example::contract().unwrap().config().clone()
+        },
+        Xpub::from_priv(secp(), &example::oracle_key()),
+    )
+    .unwrap();
+    let mut tree = Tree::new(2).unwrap();
+    let alice = example::member(210, 60_000);
+    let bob = example::member(211, 40_000);
+    tree.set(0, Some(alice.clone())).unwrap();
+    tree.set(1, Some(bob.clone())).unwrap();
+
+    // The owner-authorized EXIT_1 witness has Alice's signature; no
+    // signature by Bob or by the operator is included.
+    let first = example::prepare_step(
+        &contract,
+        &tree,
+        principal(&contract, &tree, 90),
+        Transition::Exit { count: 1 },
+        vec![example::payout(&alice)],
+        0,
+        91,
+        |sign, m| witness::exit(&tree, &[(0, false, sign(&example::key(210)))], m),
+    )
+    .unwrap();
+    let first_tx = example::finish(&first, &example::oracle().unwrap()).unwrap();
+    assert_eq!(first_tx.output[1], example::payout(&alice));
+    assert_eq!(first.next.root().sum, 40_000);
+
+    // The exact remaining principal belongs to Bob's leaf. He can exit
+    // without Alice, under the same online Sapio oracle trust assumption.
+    let second = example::prepare_step(
+        &contract,
+        &first.next,
+        successor(&first_tx),
+        Transition::Exit { count: 1 },
+        vec![example::payout(&bob)],
+        0,
+        92,
+        |sign, m| witness::exit(&first.next, &[(1, false, sign(&example::key(211)))], m),
+    )
+    .unwrap();
+    let second_tx = example::finish(&second, &example::oracle().unwrap()).unwrap();
+    assert_eq!(second_tx.output[1], example::payout(&bob));
+    assert_eq!(second.next.root(), Node::empty(2));
+    assert_eq!(second_tx.output[0].value, Amount::ZERO);
+}
+
+#[test]
 fn final_member_exit_closes_the_pool_and_depth_sixteen_remains_executable() {
     for depth in [1, 16] {
         let contract = LayerTree::new(
