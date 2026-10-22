@@ -19,9 +19,9 @@ pub mod script;
 pub mod tree;
 pub mod witness;
 
+pub use lineage::LineageGuard;
 pub use script::{Config, Transition};
 pub use tree::{Leaf, Node, Proof, Tree};
-pub use lineage::LineageGuard;
 
 fn invalid(error: impl std::fmt::Display) -> CompilationError {
     CompilationError::Custom(error.to_string().into())
