@@ -63,14 +63,20 @@ let mut guard = LineageGuard::bootstrap(contract.config().tree_id, &initial);
 
 // While holding the wallet's exclusive signing and state lock:
 guard.check(contract.config().tree_id, &current, &proposed)?;
-// Construct the real spend, obtain signatures, checkpoint the chain intent,
-// and atomically persist the accepted successor together with the guard.
+// Write a pending journal with both consumed identities and proposed
+// successor BEFORE releasing any signing share. Atomically persist it with
+// the guard state; recover unfinished branches against Bitcoin after crashes.
 guard.advance(contract.config().tree_id, &current, &proposed)?;
+// Only release signatures after that durable write. Resolve the winning
+// confirmed branch before treating the successor root as canonical.
 ```
 
 The two calls form a logical guarded transaction. The actual wallet must
-serialize signing sessions, resolve competing branch confirmation, and keep
-the guard and signed spend intent in crash-consistent durable storage.
+serialize signing sessions and record its write-ahead intent **before**
+releasing signatures. It must reconcile competing or abandoned transactions
+against the chain and retain their identity reservations where needed. The
+demonstration API is only an in-memory guard; it does not supply durable,
+atomic reservations or crash recovery.
 Do not bootstrap a new empty history when restoring a preexisting tree.
 
 ### What it does *not* enforce
