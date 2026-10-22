@@ -516,6 +516,31 @@ fn historical_owner_nonce_reuse_revives_a_signed_voucher_in_the_real_mid_guest()
         guard.check(contract.config().tree_id, &away.next, &restored.next),
         Err("historical LayerTree owner/nonce identity reused")
     );
+
+    // The guarded preparation stops before creating any transaction
+    // signatures. The plain preparation above exists only to demonstrate
+    // why a wallet's historic tombstones are necessary.
+    let refusal = example::prepare_step_guarded(
+        &contract,
+        &away.next,
+        successor(&away_tx),
+        Transition::Update,
+        vec![],
+        0,
+        84,
+        &guard,
+        |sign, m| {
+            witness::update(
+                &away.next,
+                0,
+                owner.clone(),
+                &sign(&example::key(220)),
+                &sign(&example::operator()),
+                m,
+            )
+        },
+    );
+    assert!(refusal.unwrap_err().to_string().contains("historical LayerTree"));
 }
 
 #[test]
