@@ -16,7 +16,7 @@ use sapio::contract::{Compiled, Context};
 use sapio_base::effects::MapEffectDB;
 use sapio_base::secp::secp;
 use sapio_contrib::contracts::layertree::{
-    script_tree_root, tree, witness, Config, LayerTree, Leaf, LineageGuard, Transition, Tree,
+    script_tree_root, tree, witness, Config, LayerTree, Leaf, LineageGuard, LockedLineage, Transition, Tree,
 };
 use std::sync::Arc;
 
@@ -171,6 +171,43 @@ pub fn prepare_step(
         sponsor_tag,
         None,
         None,
+        None,
+        plan,
+    )
+}
+
+/// Prepare a transition with a durably reserved, exact Bitcoin transaction.
+/// The caller keeps the exclusive LockedLineage handle until the signing
+/// session and pending intent have been safely checkpointed.
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_step_reserved(
+    contract: &LayerTree,
+    current: &Tree,
+    principal: Coin,
+    transition: Transition,
+    payouts: Vec<TxOut>,
+    lock_time: u32,
+    sponsor_tag: u8,
+    journal: &mut LockedLineage,
+    plan: impl Fn(&dyn Fn(&Keypair) -> Vec<u8>, [u8; 32]) -> Result<witness::Prepared, &'static str>,
+) -> Result<Step, Error> {
+    let prevout = principal.txout.clone();
+    let mut write_before_sign = |transaction: &Transaction, successor: &Tree| -> Result<(), Error> {
+        journal.reserve(current, successor, &prevout, transaction)?;
+        journal.permit(transaction)?;
+        Ok(())
+    };
+    prepare_step_funded(
+        contract,
+        current,
+        principal,
+        transition,
+        payouts,
+        lock_time,
+        sponsor_tag,
+        None,
+        None,
+        Some(&mut write_before_sign),
         plan,
     )
 }
@@ -200,6 +237,7 @@ pub fn prepare_step_guarded(
         sponsor_tag,
         None,
         Some(guard),
+        None,
         plan,
     )
 }
@@ -215,6 +253,7 @@ fn prepare_step_funded(
     sponsor_tag: u8,
     sponsor_outpoint: Option<OutPoint>,
     guard: Option<&LineageGuard>,
+    mut before_signature: Option<&mut dyn FnMut(&Transaction, &Tree) -> Result<(), Error>>,
     plan: impl Fn(&dyn Fn(&Keypair) -> Vec<u8>, [u8; 32]) -> Result<witness::Prepared, &'static str>,
 ) -> Result<Step, Error> {
     let compiled = compile(contract, current)?;
@@ -309,6 +348,11 @@ fn prepare_step_funded(
         leaf,
         bitcoin::TapSighashType::All,
     )?;
+    // This sync is deliberately after every unsigned construction check and
+    // before the first owner/operator/TEE signature is requested.
+    if let Some(reserve) = before_signature.as_mut() {
+        reserve(&psbt.unsigned_tx, &next)?;
+    }
     let sign = |key: &Keypair| {
         let mut bytes = secp()
             .sign_schnorr_no_aux_rand(&Message::from_digest(digest.to_byte_array()), key)
@@ -467,6 +511,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         10,
         sponsor_point(0),
         None,
+        None,
         |sign, m| {
             witness::join(
                 &current,
@@ -498,6 +543,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         11,
         sponsor_point(1),
         None,
+        None,
         |sign, m| witness::join(&current, 2, 2, &cohort, &sign(&operator()), m),
     )?;
     advance(
@@ -522,6 +568,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         0,
         20,
         sponsor_point(2),
+        None,
         None,
         |sign, m| {
             witness::rewrite(
@@ -557,6 +604,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         12,
         sponsor_point(3),
         None,
+        None,
         |sign, m| {
             witness::update(
                 &current,
@@ -586,6 +634,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         0,
         13,
         sponsor_point(4),
+        None,
         None,
         |sign, m| {
             witness::carve(
@@ -628,6 +677,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         0,
         14,
         sponsor_point(5),
+        None,
         None,
         |_, m| {
             witness::carve(
@@ -673,6 +723,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         15,
         sponsor_point(6),
         None,
+        None,
         |_, m| {
             witness::carve(
                 &current,
@@ -707,6 +758,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         16,
         sponsor_point(7),
         None,
+        None,
         |sign, m| witness::exit(&current, &[(2, false, sign(&key(212)))], m),
     )?;
     advance(
@@ -730,6 +782,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         0,
         17,
         sponsor_point(8),
+        None,
         None,
         |sign, m| {
             witness::exit(
@@ -761,6 +814,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         18,
         sponsor_point(9),
         None,
+        None,
         |sign, m| witness::evict_subtree(&current, 2, 2, &sign(&operator()), m),
     )?;
     advance(
@@ -781,6 +835,7 @@ pub fn scenario_funded(funding: Option<Funding>) -> Result<serde_json::Value, Er
         LEASE,
         19,
         sponsor_point(10),
+        None,
         None,
         |sign, m| witness::evict_subtree(&current, 1, 2, &sign(&operator()), m),
     )?;
