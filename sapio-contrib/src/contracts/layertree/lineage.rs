@@ -110,11 +110,12 @@ impl LineageGuard {
         Ok(())
     }
 
-    /// Atomically record a validated successor after the actual spend is
-    /// accepted and durably checkpointed by the coordinator.
+    /// Advance the in-memory state for a checked successor.
     ///
-    /// Local signing needs an external serializing lock across checking,
-    /// transaction preparation, guard persistence and signature release.
+    /// A coordinator must durably write a pending transition, its consumed
+    /// identities and the signed-spend intent BEFORE releasing an authority
+    /// signature, then reconcile which branch actually confirms. This method
+    /// alone performs no disk transaction or on-chain conflict resolution.
     pub fn advance(
         &mut self,
         tree_id: [u8; 32],
